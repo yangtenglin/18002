@@ -34,12 +34,13 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const formRef = ref()
 const loading = ref(false)
@@ -51,13 +52,20 @@ const rules = {
   role: [{ required: true, message: '请选择角色', trigger: 'change' }],
 }
 
+onMounted(() => {
+  const roleFromQuery = route.query.role
+  if (roleFromQuery && ['teacher', 'student'].includes(roleFromQuery)) {
+    form.role = roleFromQuery
+  }
+})
+
 const handleRegister = async () => {
   await formRef.value.validate()
   loading.value = true
   try {
     await userStore.register(form)
     ElMessage.success('注册成功，请登录')
-    router.push('/login')
+    router.push(userStore.getLoginRoute(form.role))
   } finally {
     loading.value = false
   }

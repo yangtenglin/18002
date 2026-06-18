@@ -26,8 +26,15 @@ def register_view(request):
 def login_view(request):
     username = request.data.get('username')
     password = request.data.get('password')
+    role = request.data.get('role')
     user = authenticate(request, username=username, password=password)
     if user is not None:
+        if role and user.role != role:
+            role_display = dict(User.ROLE_CHOICES).get(role, role)
+            return Response(
+                {'detail': f'该账号不是{role_display}身份，请选择正确的登录入口'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         login(request, user)
         return Response({
             'user': UserSerializer(user).data,

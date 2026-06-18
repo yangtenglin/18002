@@ -18,6 +18,11 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       ElMessage.warning('请先登录')
       router.push('/login')
+    } else if (error.response?.status === 403) {
+      const detail = error.response?.data?.detail
+      if (detail) {
+        ElMessage.error(detail)
+      }
     } else {
       ElMessage.error(msg)
     }

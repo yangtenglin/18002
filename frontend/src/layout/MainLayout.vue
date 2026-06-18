@@ -13,11 +13,11 @@
         text-color="#bfcbd9"
         active-text-color="#409eff"
       >
-        <el-menu-item index="/">
+        <el-menu-item :index="userStore.getHomeRoute()">
           <el-icon><HomeFilled /></el-icon>
           <template #title>首页</template>
         </el-menu-item>
-        <el-menu-item index="/classrooms">
+        <el-menu-item v-if="userStore.isTeacher" index="/classrooms">
           <el-icon><School /></el-icon>
           <template #title>班级管理</template>
         </el-menu-item>
@@ -31,7 +31,7 @@
       <el-header class="header">
         <div class="header-left">
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+            <el-breadcrumb-item :to="{ path: userStore.getHomeRoute() }">首页</el-breadcrumb-item>
             <el-breadcrumb-item v-if="route.name !== 'Home'">{{ route.meta.title || route.name }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>

@@ -8,6 +8,17 @@ export const useUserStore = defineStore('user', () => {
   const isTeacher = computed(() => user.value?.role === 'teacher')
   const isStudent = computed(() => user.value?.role === 'student')
 
+  function getHomeRoute() {
+    if (!user.value) return '/login'
+    return user.value.role === 'teacher' ? '/classrooms' : '/games'
+  }
+
+  function getLoginRoute(role) {
+    if (role === 'teacher') return '/login/teacher'
+    if (role === 'student') return '/login/student'
+    return '/login'
+  }
+
   async function fetchUser() {
     try {
       const data = await authApi.me()
@@ -33,5 +44,5 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
   }
 
-  return { user, isLoggedIn, isTeacher, isStudent, fetchUser, login, register, logout }
+  return { user, isLoggedIn, isTeacher, isStudent, getHomeRoute, getLoginRoute, fetchUser, login, register, logout }
 })

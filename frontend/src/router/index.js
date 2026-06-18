@@ -4,8 +4,20 @@ import { useUserStore } from '../stores/user'
 const routes = [
   {
     path: '/login',
-    name: 'Login',
-    component: () => import('../views/Login.vue'),
+    name: 'RoleSelect',
+    component: () => import('../views/RoleSelect.vue'),
+    meta: { guest: true },
+  },
+  {
+    path: '/login/teacher',
+    name: 'TeacherLogin',
+    component: () => import('../views/TeacherLogin.vue'),
+    meta: { guest: true },
+  },
+  {
+    path: '/login/student',
+    name: 'StudentLogin',
+    component: () => import('../views/StudentLogin.vue'),
     meta: { guest: true },
   },
   {
@@ -28,12 +40,14 @@ const routes = [
         path: 'classrooms',
         name: 'Classrooms',
         component: () => import('../views/Classrooms.vue'),
+        meta: { roles: ['teacher'] },
       },
       {
         path: 'classrooms/:id',
         name: 'ClassroomDetail',
         component: () => import('../views/ClassroomDetail.vue'),
         props: true,
+        meta: { roles: ['teacher'] },
       },
       {
         path: 'games',
@@ -51,6 +65,7 @@ const routes = [
         name: 'DecisionSubmit',
         component: () => import('../views/DecisionSubmit.vue'),
         props: true,
+        meta: { roles: ['student'] },
       },
       {
         path: 'games/:id/dashboard',
@@ -86,11 +101,23 @@ router.beforeEach(async (to, from, next) => {
 
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     next('/login')
-  } else if (to.meta.guest && userStore.isLoggedIn) {
-    next('/')
-  } else {
-    next()
+    return
   }
+
+  if (to.meta.guest && userStore.isLoggedIn) {
+    next(userStore.isTeacher ? '/classrooms' : '/games')
+    return
+  }
+
+  if (to.meta.roles && userStore.isLoggedIn) {
+    const userRole = userStore.user?.role
+    if (!to.meta.roles.includes(userRole)) {
+      next(userRole === 'teacher' ? '/classrooms' : '/games')
+      return
+    }
+  }
+
+  next()
 })
 
 export default router
