@@ -70,7 +70,6 @@ def decision_list_create_view(request, game_pk):
         data = request.data.copy()
         data['game'] = game.pk
         data['round_number'] = game.current_round
-        data['is_submitted'] = True
 
         if existing:
             serializer = DecisionSerializer(existing, data=data, partial=False)
@@ -78,7 +77,7 @@ def decision_list_create_view(request, game_pk):
             serializer = DecisionSerializer(data=data)
 
         if serializer.is_valid():
-            serializer.save()
+            serializer.save(is_submitted=True)
             _invalidate_game_cache(game_pk)
             return Response(serializer.data, status=status.HTTP_201_CREATED if not existing else status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
