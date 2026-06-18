@@ -1,0 +1,20 @@
+[Unit]
+Description=Hotel Simulation Django Backend
+After=network.target nginx.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/hotel-simulation/backend
+Environment="DJANGO_SETTINGS_MODULE=backend.settings_prod"
+EnvironmentFile=/home/ubuntu/hotel-simulation/backend/.env
+ExecStart=/home/ubuntu/hotel-simulation/backend/venv/bin/gunicorn -c /home/ubuntu/hotel-simulation/deploy/gunicorn.conf.py backend.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
