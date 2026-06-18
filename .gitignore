@@ -1,0 +1,150 @@
+# ==============================================
+# 1. 系统通用文件（全平台系统垃圾、临时文件）
+# ==============================================
+# macOS 系统生成文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+
+# 通用日志与临时文件
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# 数据库备份/压缩包
+*.zip
+*.tar.gz
+*.rar
+*.sql
+
+
+# ==============================================
+# 2. 编辑器 / IDE 个人配置（团队协作禁止提交）
+# ==============================================
+
+# VS Code
+.vscode/
+!.vscode/extensions.json  # 可选：保留项目推荐插件配置
+
+# 其他编辑器
+.project
+.classpath
+.settings/
+
+
+# ==============================================
+# 3. Python / Django 后端专属规则
+# ==============================================
+# Python 字节码缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 代码检查/类型检查缓存
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# 虚拟环境（本地运行环境，严禁提交）
+venv/
+.venv/
+env/
+ENV/
+
+# 环境变量与敏感配置（核心！绝对不能提交到公开仓库）
+.env
+.env.*
+!.env.example  # 保留环境变量示例模板
+local_settings.py  # Django 本地私有配置文件
+
+# Django 本地运行文件
+# 本地 SQLite 数据库
+db.sqlite3
+db.sqlite3-journal
+
+# 用户上传资源、媒体文件
+media/
+uploads/
+
+# 静态资源构建产物（collectstatic 生成，无需提交源码）
+staticfiles/
+static_collected/
+
+# 本地缓存目录
+.cache/
+django_cache/
+
+# 测试覆盖率报告
+.coverage
+htmlcov/
+.tox/
+
+# Python 打包产物
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Pip 日志
+pip-log.txt
+pip-delete-this-directory.txt
+
+
+# ==============================================
+# 4. Vue3 + Element Plus 前端专属规则
+# ==============================================
+# 依赖包（核心，无需提交源码）
+node_modules/
+
+# 构建产物（打包生成，无需提交源码）
+dist/
+dist-ssr/
+build/
+output/
+
+# Vite / Webpack 构建缓存
+.vite/
+.cache/
+.parcel-cache/
+.webpack_cache/
+
+# 前端本地环境变量（私有配置，不提交）
+.env.local
+.env.*.local
+
+# 包管理器运行日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 代码检查缓存
+.eslintcache
+.stylelintcache
+
+# 前端测试覆盖率
+coverage/
+*.lcov
+
+
+# ==============================================
+# 5. 酒店模拟经营平台 项目专属可选规则
+# ==============================================
+# 本地测试用的模拟数据集、测试账号
+test_data/
+local_data/
+
+# 模拟算法引擎本地计算缓存
+algorithm_cache/
+sim_result_cache/
+
+# 本地导出的评分报表、排名文件
+export/
+report/
