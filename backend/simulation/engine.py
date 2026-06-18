@@ -1,4 +1,4 @@
-import math
+from django.db.models import Sum, Count, Avg
 from dashboard.models import RoundResult, CumulativeResult
 from decisions.models import Decision
 from simulation.models import GameParameter
@@ -18,20 +18,21 @@ class SimulationEngine:
     SATISFACTION_WEIGHT_FOOD = 0.2
 
     def calculate_round(self, game, round_number):
-        decisions = Decision.objects.filter(
-            game=game, round_number=round_number, is_submitted=True
-        )
-        if not decisions.exists():
+        decisions_qs = Decision.objects.filter(
+            game_id=game.pk, round_number=round_number, is_submitted=True
+        ).select_related('team')
+        all_decisions = list(decisions_qs)
+        if not all_decisions:
             return []
 
         param = self._get_parameters(game, round_number)
         total_teams = game.class_room.teams.count()
         results = []
 
-        all_decisions = list(decisions)
-        avg_standard_rate = sum(d.room_rate_standard for d in all_decisions) / len(all_decisions) if all_decisions else 500
-        avg_deluxe_rate = sum(d.room_rate_deluxe for d in all_decisions) / len(all_decisions) if all_decisions else 800
-        avg_suite_rate = sum(d.room_rate_suite for d in all_decisions) / len(all_decisions) if all_decisions else 1500
+        n = len(all_decisions)
+        avg_standard_rate = sum(d.room_rate_standard for d in all_decisions) / n
+        avg_deluxe_rate = sum(d.room_rate_deluxe for d in all_decisions) / n
+        avg_suite_rate = sum(d.room_rate_suite for d in all_decisions) / n
 
         for decision in all_decisions:
             result = self._calculate_team_result(
@@ -40,23 +41,27 @@ class SimulationEngine:
             )
             results.append(result)
 
-        self._calculate_market_shares(results, total_teams, param)
-        self._calculate_scores(results, game.current_round)
+        self._calculate_market_shares(results, total_teams)
+        self._calculate_scores(results)
 
-        RoundResult.objects.filter(game=game, round_number=round_number).delete()
-        RoundResult.objects.bulk_create(results)
+        RoundResult.objects.filter(game_id=game.pk, round_number=round_number).delete()
+        RoundResult.objects.bulk_create(results, batch_size=200)
 
-        self._update_cumulative_results(game)
+        self._update_cumulative_results_optimized(game)
 
         return results
 
     def _get_parameters(self, game, round_number):
-        param = GameParameter.objects.filter(game=game, round_number=round_number).first()
-        if not param:
-            param = GameParameter.objects.filter(game=game, round_number=0).first()
-        if not param:
-            param = GameParameter(game=game, round_number=round_number)
-        return param
+        params = list(GameParameter.objects.filter(
+            game_id=game.pk, round_number__in=[round_number, 0]
+        ))
+        for p in params:
+            if p.round_number == round_number:
+                return p
+        for p in params:
+            if p.round_number == 0:
+                return p
+        return GameParameter(game_id=game.pk, round_number=round_number)
 
     def _calculate_team_result(self, decision, param, total_teams, round_number,
                                 avg_standard_rate, avg_deluxe_rate, avg_suite_rate):
@@ -67,16 +72,13 @@ class SimulationEngine:
         )
 
         result.occupancy_rate_standard = self._calc_occupancy(
-            decision.room_rate_standard, avg_standard_rate, param,
-            decision.marketing_budget, total_teams, self.ROOMS_STANDARD
+            decision.room_rate_standard, avg_standard_rate, param, decision.marketing_budget
         )
         result.occupancy_rate_deluxe = self._calc_occupancy(
-            decision.room_rate_deluxe, avg_deluxe_rate, param,
-            decision.marketing_budget, total_teams, self.ROOMS_DELUXE
+            decision.room_rate_deluxe, avg_deluxe_rate, param, decision.marketing_budget
         )
         result.occupancy_rate_suite = self._calc_occupancy(
-            decision.room_rate_suite, avg_suite_rate, param,
-            decision.marketing_budget, total_teams, self.ROOMS_SUITE
+            decision.room_rate_suite, avg_suite_rate, param, decision.marketing_budget
         )
 
         result.occupancy_rate_standard = min(max(result.occupancy_rate_standard, 0.05), 0.98)
@@ -107,12 +109,14 @@ class SimulationEngine:
 
         result.profit = result.revenue_total - result.cost_total
 
-        result.customer_satisfaction = self._calc_satisfaction(decision, param, avg_standard_rate, avg_deluxe_rate, avg_suite_rate)
+        result.customer_satisfaction = self._calc_satisfaction(
+            decision, avg_standard_rate, avg_deluxe_rate, avg_suite_rate
+        )
         result.customer_satisfaction = min(max(result.customer_satisfaction, 1.0), 10.0)
 
         return result
 
-    def _calc_occupancy(self, rate, avg_rate, param, marketing_budget, total_teams, room_count):
+    def _calc_occupancy(self, rate, avg_rate, param, marketing_budget):
         price_competitiveness = avg_rate / max(rate, 1)
         occupancy = self.BASE_OCCUPANCY * price_competitiveness
         occupancy *= param.seasonal_factor * param.economic_factor
@@ -122,7 +126,7 @@ class SimulationEngine:
         occupancy += competition_effect
         return occupancy
 
-    def _calc_satisfaction(self, decision, param, avg_standard, avg_deluxe, avg_suite):
+    def _calc_satisfaction(self, decision, avg_standard, avg_deluxe, avg_suite):
         service_score = min(decision.service_quality_target / 10, 1.0) * 3
         renovation_effect = min(decision.renovation_budget / 50000, 1.5) * 2
         avg_rate = (decision.room_rate_standard + decision.room_rate_deluxe + decision.room_rate_suite) / 3
@@ -137,61 +141,105 @@ class SimulationEngine:
         )
         return satisfaction * 10 / 3
 
-    def _calculate_market_shares(self, results, total_teams, param):
+    def _calculate_market_shares(self, results, total_teams):
         total_revenue = sum(r.revenue_total for r in results)
         if total_revenue > 0:
+            inv = 1.0 / total_revenue
             for r in results:
-                r.market_share = r.revenue_total / total_revenue
+                r.market_share = r.revenue_total * inv
         else:
+            share = 1.0 / total_teams
             for r in results:
-                r.market_share = 1.0 / total_teams
+                r.market_share = share
 
-    def _calculate_scores(self, results, current_round):
+    def _calculate_scores(self, results):
         if not results:
             return
 
-        max_profit = max(r.profit for r in results) or 1
-        max_revenue = max(r.revenue_total for r in results) or 1
-        max_satisfaction = max(r.customer_satisfaction for r in results) or 1
+        max_profit = max((r.profit for r in results), default=0) or 1
+        max_revenue = max((r.revenue_total for r in results), default=0) or 1
+        max_satisfaction = max((r.customer_satisfaction for r in results), default=0) or 1
+
+        profit_coef = 40 / max_profit if max_profit > 0 else 0
+        revenue_coef = 25 / max_revenue if max_revenue > 0 else 0
+        sat_coef = 20 / max_satisfaction if max_satisfaction > 0 else 0
 
         for r in results:
-            profit_score = (r.profit / max_profit) * 40 if max_profit > 0 else 0
-            revenue_score = (r.revenue_total / max_revenue) * 25 if max_revenue > 0 else 0
-            satisfaction_score = (r.customer_satisfaction / max_satisfaction) * 20 if max_satisfaction > 0 else 0
+            profit_score = r.profit * profit_coef if max_profit > 0 else 0
+            revenue_score = r.revenue_total * revenue_coef if max_revenue > 0 else 0
+            satisfaction_score = r.customer_satisfaction * sat_coef if max_satisfaction > 0 else 0
             market_score = r.market_share * 100 * 0.15
             r.score = max(profit_score + revenue_score + satisfaction_score + market_score, 0)
 
-    def _update_cumulative_results(self, game):
-        teams = game.class_room.teams.all()
-        for team in teams:
-            round_results = RoundResult.objects.filter(game=game, team=team)
-            if not round_results.exists():
+    def _update_cumulative_results_optimized(self, game):
+        from django.db.models import Sum as DbSum, Count as DbCount, Avg as DbAvg
+
+        all_rounds = RoundResult.objects.filter(game_id=game.pk)
+
+        aggregates = all_rounds.values('team_id').annotate(
+            rounds_played=DbCount('id'),
+            total_revenue=DbSum('revenue_total'),
+            total_cost=DbSum('cost_total'),
+            total_profit=DbSum('profit'),
+            avg_satisfaction=DbAvg('customer_satisfaction'),
+            avg_market_share=DbAvg('market_share'),
+            round_score_sum=DbSum('score'),
+        )
+
+        agg_by_team = {row['team_id']: row for row in aggregates}
+
+        existing_cumulative = CumulativeResult.objects.filter(game_id=game.pk)
+        existing_by_team = {cr.team_id: cr for cr in existing_cumulative}
+
+        to_create = []
+        to_update = []
+
+        for team_id, row in agg_by_team.items():
+            rp = row['rounds_played']
+            if rp == 0:
                 continue
+            total_rev = row['total_revenue'] or 0
+            total_prof = row['total_profit'] or 0
+            score_sum = row['round_score_sum'] or 0
+            final_score = (score_sum / rp) * (1 + total_prof / max(total_rev, 1))
 
-            rounds_played = round_results.count()
-            total_revenue = sum(r.revenue_total for r in round_results)
-            total_cost = sum(r.cost_total for r in round_results)
-            total_profit = sum(r.profit for r in round_results)
-            avg_satisfaction = sum(r.customer_satisfaction for r in round_results) / rounds_played
-            avg_market_share = sum(r.market_share for r in round_results) / rounds_played
+            data = {
+                'rounds_played': rp,
+                'total_revenue': total_rev,
+                'total_cost': row['total_cost'] or 0,
+                'total_profit': total_prof,
+                'avg_satisfaction': row['avg_satisfaction'] or 0,
+                'avg_market_share': row['avg_market_share'] or 0,
+                'final_score': final_score,
+            }
 
-            round_score_sum = sum(r.score for r in round_results)
-            final_score = round_score_sum / rounds_played * (1 + total_profit / max(total_revenue, 1))
+            if team_id in existing_by_team:
+                cr = existing_by_team[team_id]
+                for k, v in data.items():
+                    setattr(cr, k, v)
+                to_update.append(cr)
+            else:
+                to_create.append(CumulativeResult(
+                    game_id=game.pk, team_id=team_id, **data
+                ))
 
-            CumulativeResult.objects.update_or_create(
-                team=team, game=game,
-                defaults={
-                    'rounds_played': rounds_played,
-                    'total_revenue': total_revenue,
-                    'total_cost': total_cost,
-                    'total_profit': total_profit,
-                    'avg_satisfaction': avg_satisfaction,
-                    'avg_market_share': avg_market_share,
-                    'final_score': final_score,
-                }
+        if to_create:
+            CumulativeResult.objects.bulk_create(to_create, batch_size=200)
+        if to_update:
+            CumulativeResult.objects.bulk_update(
+                to_update,
+                fields=['rounds_played', 'total_revenue', 'total_cost',
+                        'total_profit', 'avg_satisfaction', 'avg_market_share',
+                        'final_score'],
+                batch_size=200,
             )
 
-        all_cumulative = CumulativeResult.objects.filter(game=game).order_by('-final_score')
-        for idx, cr in enumerate(all_cumulative, 1):
+        ranked = list(
+            CumulativeResult.objects.filter(game_id=game.pk)
+            .only('id', 'final_score')
+            .order_by('-final_score')
+        )
+        for idx, cr in enumerate(ranked, 1):
             cr.rank = idx
-            cr.save(update_fields=['rank'])
+        if ranked:
+            CumulativeResult.objects.bulk_update(ranked, fields=['rank'], batch_size=200)

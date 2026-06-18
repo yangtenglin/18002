@@ -15,6 +15,10 @@ class RoundResultSerializer(serializers.ModelSerializer):
             'profit', 'customer_satisfaction', 'market_share', 'score', 'calculated_at',
         ]
 
+    @staticmethod
+    def optimize_queryset(queryset):
+        return queryset.select_related('team')
+
 
 class CumulativeResultSerializer(serializers.ModelSerializer):
     team_name = serializers.CharField(source='team.name', read_only=True)
@@ -26,6 +30,10 @@ class CumulativeResultSerializer(serializers.ModelSerializer):
             'total_revenue', 'total_cost', 'total_profit',
             'avg_satisfaction', 'avg_market_share', 'final_score', 'rank', 'updated_at',
         ]
+
+    @staticmethod
+    def optimize_queryset(queryset):
+        return queryset.select_related('team')
 
 
 class DashboardSerializer(serializers.Serializer):

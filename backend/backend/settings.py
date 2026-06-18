@@ -4,7 +4,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-jt#m!!fk(nu*nn46&*m^)os()6x5bh0tk=3c&z4q)#a8gi@h5q'
 
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 
@@ -58,6 +58,22 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 30,
+        },
+        'CONN_MAX_AGE': 300,
+    }
+}
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'simulation-cache',
+        'TIMEOUT': 30,
+        'OPTIONS': {
+            'MAX_ENTRIES': 10000,
+            'CULL_FREQUENCY': 3,
+        },
     }
 }
 
@@ -90,3 +106,20 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
 }
+
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+
+import sys
+from django.db.backends.signals import connection_created
+
+def _configure_sqlite_connection(sender, connection, **kwargs):
+    if connection.vendor == 'sqlite' and 'test' not in sys.argv:
+        with connection.cursor() as cursor:
+            cursor.execute('PRAGMA journal_mode=WAL')
+            cursor.execute('PRAGMA synchronous=NORMAL')
+            cursor.execute('PRAGMA busy_timeout=30000')
+            cursor.execute('PRAGMA cache_size=-64000')
+            cursor.execute('PRAGMA temp_store=MEMORY')
+            cursor.execute('PRAGMA mmap_size=268435456')
+
+connection_created.connect(_configure_sqlite_connection)

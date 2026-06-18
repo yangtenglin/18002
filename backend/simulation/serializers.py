@@ -1,3 +1,4 @@
+from django.db.models import Count
 from rest_framework import serializers
 from .models import Game, GameParameter
 
@@ -15,7 +16,7 @@ class GameParameterSerializer(serializers.ModelSerializer):
 
 class GameSerializer(serializers.ModelSerializer):
     class_room_name = serializers.CharField(source='class_room.name', read_only=True)
-    teams_count = serializers.SerializerMethodField()
+    teams_count = serializers.IntegerField(read_only=True, default=0)
     submitted_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -27,16 +28,27 @@ class GameSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['current_round', 'started_at', 'finished_at']
 
-    def get_teams_count(self, obj):
-        return obj.class_room.teams.count()
-
     def get_submitted_count(self, obj):
-        from decisions.models import Decision
         if obj.current_round == 0:
             return 0
+        submitted_map = self.context.get('submitted_map', {})
+        if submitted_map:
+            return submitted_map.get(obj.pk, 0)
+        from decisions.models import Decision
         return Decision.objects.filter(
             game=obj, round_number=obj.current_round, is_submitted=True
         ).count()
+
+    @staticmethod
+    def optimize_queryset(queryset):
+        return queryset.select_related('class_room').annotate(
+            _teams_count=Count('class_room__teams', distinct=True)
+        )
+
+    def to_representation(self, instance):
+        if hasattr(instance, '_teams_count'):
+            instance.teams_count = instance._teams_count
+        return super().to_representation(instance)
 
 
 class GameDetailSerializer(GameSerializer):
@@ -44,3 +56,9 @@ class GameDetailSerializer(GameSerializer):
 
     class Meta(GameSerializer.Meta):
         fields = GameSerializer.Meta.fields + ['parameters']
+
+    @staticmethod
+    def optimize_queryset(queryset):
+        return GameSerializer.optimize_queryset(
+            queryset.prefetch_related('parameters')
+        )
